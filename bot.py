@@ -16,29 +16,47 @@ args = parser.parse_args()
 
 youtube_playlist_id = args.youtube_playlist_id
 bot_token = args.bot_token
-discord_channel = args.discord_channel
+discord_channel = int(args.discord_channel)
 
 discordClient = discord.Client()
-
-scopes = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 # Disable OAuthlib's HTTPS verification when running locally.
 # *DO NOT* leave this option enabled in production.
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
-api_service_name = "youtube"
-api_version = "v3"
-client_secrets_file = "secret.json"
-
-# Get credentials and create an API client
-flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(client_secrets_file, scopes)
+# Get credentials and create a YoutTube API client
+flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file("secret.json", [
+    "https://www.googleapis.com/auth/youtube.force-ssl"])
 credentials = flow.run_console()
-youtube = googleapiclient.discovery.build(api_service_name, api_version, credentials=credentials)
+youtube = googleapiclient.discovery.build("youtube", "v3", credentials=credentials)
 
 
-def playlist_contains_video(playlist_id, video_id):
+def get_videos_in_all_playlists():
     page_token = None
     first_page = True
+    videos = []
+    while page_token is not None or first_page:
+        request = youtube.playlists().list(
+            part="snippet,contentDetails",
+            maxResults=50,
+            pageToken=page_token,
+            mine=True
+        )
+        response = request.execute()
+
+        for playlist in response.get('items'):
+            playlist_id = playlist.get('id')
+            videos.append(get_videos_in_playlist(playlist_id))
+
+        page_token = response.get('nextPageToken')
+        first_page = False
+    return videos
+
+
+def get_videos_in_playlist(playlist_id):
+    page_token = None
+    first_page = True
+    videos = []
     while page_token is not None or first_page:
         request = youtube.playlistItems().list(
             part="snippet,contentDetails",
@@ -49,14 +67,11 @@ def playlist_contains_video(playlist_id, video_id):
         response = request.execute()
 
         for playlist_item in response.get('items'):
-            if playlist_item.get('contentDetails').get('videoId') == video_id:
-                return True
+            videos.append(playlist_item.get('contentDetails').get('videoId'))
 
-        response = request.execute()
         page_token = response.get('nextPageToken')
         first_page = False
-
-    return False
+    return videos
 
 
 def add_video_to_playlist(playlist_id, video_id):
@@ -80,8 +95,10 @@ def add_video_to_playlist(playlist_id, video_id):
 def add_videos_to_playlist(video_ids):
     for video_id in video_ids:
         if video_id is not None:
-            if not playlist_contains_video(youtube_playlist_id, video_id):
+            if video_id not in playlist_content:
+                playlist_content.append(video_id)
                 add_video_to_playlist(youtube_playlist_id, video_id)
+                playlist_content.append(video_id)
 
 
 def video_ids_in_message(message):
@@ -113,4 +130,5 @@ async def on_message(message):
         add_videos_to_playlist(video_ids)
 
 
+playlist_content = get_videos_in_all_playlists()
 discordClient.run(bot_token)
