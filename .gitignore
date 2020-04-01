@@ -1,0 +1,4 @@
+*.log
+secret.json
+.env/
+.idea/
