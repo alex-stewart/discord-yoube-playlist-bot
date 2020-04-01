@@ -1,6 +1,5 @@
 import os
 import re
-from urllib.parse import urlparse, parse_qs
 
 import discord
 import google_auth_oauthlib.flow
