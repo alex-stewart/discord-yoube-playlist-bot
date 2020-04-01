@@ -1,14 +1,23 @@
 import os
 import re
+from argparse import ArgumentParser
 
 import discord
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
 
-youtube_playlist_id = os.environ['YOUTUBE_PLAYLIST']
-bot_token = os.environ['DISCORD_TOKEN']
-discord_channel = int(os.environ['DISCORD_CHANNEL'])
+# Parse arguments
+parser = ArgumentParser(description='Add videos from discord channel to youtube playlist.')
+parser.add_argument('youtube_playlist_id', type=str, help='youtube playlist id')
+parser.add_argument('bot_token', type=str, help='discord bot token')
+parser.add_argument('discord_channel', type=str, help='a discord channel id')
+args = parser.parse_args()
+
+youtube_playlist_id = args.youtube_playlist_id
+bot_token = args.bot_token
+discord_channel = args.discord_channel
+
 discordClient = discord.Client()
 
 scopes = ["https://www.googleapis.com/auth/youtube.force-ssl"]
