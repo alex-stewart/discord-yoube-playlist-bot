@@ -9,12 +9,10 @@ import googleapiclient.errors
 
 # Parse arguments
 parser = ArgumentParser(description='Add videos from discord channel to youtube playlist.')
-parser.add_argument('youtube_playlist_id', type=str, help='youtube playlist id')
 parser.add_argument('bot_token', type=str, help='discord bot token')
 parser.add_argument('discord_channel', type=str, help='a discord channel id')
 args = parser.parse_args()
 
-youtube_playlist_id = args.youtube_playlist_id
 bot_token = args.bot_token
 discord_channel = int(args.discord_channel)
 
@@ -31,29 +29,26 @@ credentials = flow.run_console()
 youtube = googleapiclient.discovery.build("youtube", "v3", credentials=credentials)
 
 
-def get_videos_in_all_playlists():
-    page_token = None
-    first_page = True
-    videos = []
-    while page_token is not None or first_page:
-        request = youtube.playlists().list(
-            part="snippet,contentDetails",
-            maxResults=50,
-            pageToken=page_token,
-            mine=True
-        )
-        response = request.execute()
-
-        for playlist in response.get('items'):
-            playlist_id = playlist.get('id')
-            videos.append(get_videos_in_playlist(playlist_id))
-
-        page_token = response.get('nextPageToken')
-        first_page = False
-    return videos
+def new_playlist(playlist_name):
+    print('creating playlist ' + playlist_name)
+    request = youtube.playlists().insert(
+        part="snippet,status",
+        body={
+          "snippet": {
+            "title": playlist_name,
+            "defaultLanguage": "en"
+          },
+          "status": {
+            "privacyStatus": "public"
+          }
+        }
+    )
+    playlist = request.execute()
+    print(playlist)
+    return playlist.get('id')
 
 
-def get_videos_in_playlist(playlist_id):
+def get_videos_in_playlist(pl_id):
     page_token = None
     first_page = True
     videos = []
@@ -61,7 +56,7 @@ def get_videos_in_playlist(playlist_id):
         request = youtube.playlistItems().list(
             part="snippet,contentDetails",
             maxResults=50,
-            playlistId=playlist_id,
+            playlistId=pl_id,
             pageToken=page_token
         )
         response = request.execute()
@@ -74,12 +69,34 @@ def get_videos_in_playlist(playlist_id):
     return videos
 
 
-def add_video_to_playlist(playlist_id, video_id):
+def get_videos_in_all_playlists():
+    page_token = None
+    first_page = True
+    playlists = {}
+    while page_token is not None or first_page:
+        request = youtube.playlists().list(
+            part="snippet,contentDetails",
+            maxResults=50,
+            pageToken=page_token,
+            mine=True
+        )
+        response = request.execute()
+
+        for playlist in response.get('items'):
+            pl_id = playlist.get('id')
+            playlists[pl_id] = get_videos_in_playlist(pl_id)
+
+        page_token = response.get('nextPageToken')
+        first_page = False
+    return playlists
+
+
+def add_video_to_playlist(pl_id, video_id):
     request = youtube.playlistItems().insert(
         part="snippet",
         body={
             "snippet": {
-                "playlistId": playlist_id,
+                "playlistId": pl_id,
                 "position": 0,
                 "resourceId": {
                     "kind": "youtube#video",
@@ -95,10 +112,9 @@ def add_video_to_playlist(playlist_id, video_id):
 def add_videos_to_playlist(video_ids):
     for video_id in video_ids:
         if video_id is not None:
-            if video_id not in playlist_content:
-                playlist_content.append(video_id)
-                add_video_to_playlist(youtube_playlist_id, video_id)
-                playlist_content.append(video_id)
+            if video_id not in all_videos:
+                add_video_to_playlist(active_playlist_id, video_id)
+                all_videos.append(video_id)
 
 
 def video_ids_in_message(message):
@@ -130,5 +146,17 @@ async def on_message(message):
         add_videos_to_playlist(video_ids)
 
 
+# Fetch all playlists and videos from youtube
 playlist_content = get_videos_in_all_playlists()
+
+all_videos = []
+active_playlist_id = None
+for playlist_id, playlist_videos in playlist_content.items():
+    all_videos.extend(playlist_videos)
+    if len(playlist_videos) < 5000:
+        x = 1
+
+if active_playlist_id is None:
+    active_playlist_id = new_playlist('Axon Jukebox ' + str(len(playlist_content) + 1))
+
 discordClient.run(bot_token)
